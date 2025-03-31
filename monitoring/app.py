@@ -1,104 +1,102 @@
-from fastapi import FastAPI, Request, BackgroundTasks
-from fastapi.templating import Jinja2Templates
+from fastapi import FastAPI, Request, Depends, HTTPException
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-from datetime import datetime, timedelta
-import firebase_admin
-from firebase_admin import credentials, firestore
-import json
-import os
-from .models import Session, Parser, ParseError, WeeklyReport
+from fastapi.templating import Jinja2Templates
+from sqlalchemy.orm import Session
+from .models import SessionLocal, Parser, ParseError, WeeklyReport
 from .accuracy_checker import check_parser_accuracy
 from .report_generator import generate_weekly_report
+import firebase_admin
+from firebase_admin import credentials, firestore
+import os
+from datetime import datetime, timedelta
 
-# Initialize Firebase Admin (optional)
-db = None
+# Initialize Firebase Admin
 try:
-    if os.path.exists('firebase-credentials.json'):
-        cred = credentials.Certificate('firebase-credentials.json')
-        firebase_admin.initialize_app(cred)
-        db = firestore.client()
-        print("Firebase initialized successfully")
-    else:
-        print("Firebase credentials file not found - running without Firebase")
+    cred = credentials.Certificate(os.getenv('FIREBASE_CREDENTIALS'))
+    firebase_admin.initialize_app(cred)
+    db = firestore.client()
+    print("Firebase initialized successfully")
 except Exception as e:
-    print(f"Failed to initialize Firebase: {e}")
+    print(f"Firebase initialization failed: {e}")
+    db = None
 
 app = FastAPI(title="Recipe Parser Monitor")
-app.mount("/static", StaticFiles(directory="monitoring/static"), name="static")
+
+# Mount static files
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# Templates
 templates = Jinja2Templates(directory="monitoring/templates")
 
-@app.get("/")
-async def dashboard(request: Request):
-    session = Session()
+# Dependency
+def get_db():
+    db = SessionLocal()
     try:
-        # Get parser stats
-        parsers = session.query(Parser).all()
-        
-        # Get summary stats
-        total_active = len(parsers)
-        recipes_this_week = sum(p.last_run_recipes for p in parsers)
-        low_accuracy = [p for p in parsers if p.accuracy_score < 90]
-        
-        # Get latest report
-        latest_report = session.query(WeeklyReport).order_by(WeeklyReport.report_date.desc()).first()
-        
-        return templates.TemplateResponse(
-            "dashboard.html",
-            {
-                "request": request,
-                "parsers": parsers,
-                "total_active": total_active,
-                "recipes_this_week": recipes_this_week,
-                "low_accuracy": low_accuracy,
-                "latest_report": latest_report
-            }
+        yield db
+    finally:
+        db.close()
+
+@app.get("/", response_class=HTMLResponse)
+async def dashboard(request: Request, db: Session = Depends(get_db)):
+    # Get parser stats
+    parser = db.query(Parser).first()
+    if not parser:
+        parser = Parser(
+            name="AllRecipes Parser",
+            version="1.0",
+            total_recipes=0,
+            accuracy_score=0.0,
+            error_count=0,
+            last_run=datetime.utcnow(),
+            last_run_recipes=0,
+            avg_parse_time=0.0
         )
-    finally:
-        session.close()
+        db.add(parser)
+        db.commit()
 
-@app.get("/parser/{parser_id}/errors")
-async def parser_errors(parser_id: int):
-    session = Session()
-    try:
-        errors = session.query(ParseError).filter_by(parser_id=parser_id).all()
-        return {"errors": [{"url": e.url, "message": e.error_message, "timestamp": e.timestamp} for e in errors]}
-    finally:
-        session.close()
+    # Get recent errors
+    recent_errors = db.query(ParseError).order_by(ParseError.timestamp.desc()).limit(5).all()
 
-@app.get("/export/pdf")
-async def export_pdf():
-    # TODO: Implement PDF export using WeasyPrint
-    pass
+    # Get weekly reports
+    weekly_reports = db.query(WeeklyReport).order_by(WeeklyReport.report_date.desc()).limit(4).all()
 
-@app.get("/export/csv")
-async def export_csv():
-    session = Session()
-    try:
-        parsers = session.query(Parser).all()
-        csv_data = []
-        for p in parsers:
-            csv_data.append({
-                "name": p.name,
-                "version": p.version,
-                "total_recipes": p.total_recipes,
-                "accuracy": p.accuracy_score,
-                "errors": p.error_count,
-                "last_run": p.last_run
-            })
-        # Save to CSV and return file
-        return FileResponse("parser_stats.csv")
-    finally:
-        session.close()
+    return templates.TemplateResponse(
+        "dashboard.html",
+        {
+            "request": request,
+            "parser": parser,
+            "recent_errors": recent_errors,
+            "weekly_reports": weekly_reports
+        }
+    )
 
 @app.post("/check-accuracy")
-async def check_accuracy(background_tasks: BackgroundTasks):
-    """Trigger accuracy check for all parsers"""
-    background_tasks.add_task(check_parser_accuracy)
-    return {"message": "Accuracy check started"}
+async def trigger_accuracy_check(db: Session = Depends(get_db)):
+    try:
+        accuracy_score = await check_parser_accuracy()
+        parser = db.query(Parser).first()
+        if parser:
+            parser.accuracy_score = accuracy_score
+            db.commit()
+        return {"status": "success", "accuracy_score": accuracy_score}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 @app.post("/generate-report")
-async def trigger_report(background_tasks: BackgroundTasks):
-    """Manually trigger weekly report generation"""
-    background_tasks.add_task(generate_weekly_report)
-    return {"message": "Report generation started"} 
+async def trigger_report_generation(db: Session = Depends(get_db)):
+    try:
+        report_data = await generate_weekly_report()
+        report = WeeklyReport(
+            report_date=datetime.utcnow(),
+            total_recipes=report_data["total_recipes"],
+            success_rate=report_data["success_rate"],
+            avg_accuracy=report_data["avg_accuracy"],
+            error_count=report_data["error_count"],
+            report_data=str(report_data)
+        )
+        db.add(report)
+        db.commit()
+        return {"status": "success", "report_data": report_data}
+    except Exception as e:
+        return {"status": "error", "message": str(e)} 
