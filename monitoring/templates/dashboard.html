@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Recipe Parser Monitor</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto px-4 py-8">
+        <!-- Header -->
+        <div class="flex justify-between items-center mb-8">
+            <h1 class="text-3xl font-bold text-gray-800">Recipe Parser Monitor</h1>
+            <div class="space-x-4">
+                <button onclick="window.location.href='/export/csv'" class="bg-green-500 text-white px-4 py-2 rounded">Export CSV</button>
+                <button onclick="window.location.href='/export/pdf'" class="bg-blue-500 text-white px-4 py-2 rounded">Export PDF</button>
+            </div>
+        </div>
+
+        <!-- Summary Section -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+            <div class="bg-white p-6 rounded-lg shadow">
+                <h3 class="text-lg font-semibold mb-2">Active Parsers</h3>
+                <p class="text-3xl font-bold text-blue-600">{{ total_active }}</p>
+            </div>
+            <div class="bg-white p-6 rounded-lg shadow">
+                <h3 class="text-lg font-semibold mb-2">Recipes This Week</h3>
+                <p class="text-3xl font-bold text-green-600">{{ recipes_this_week }}</p>
+            </div>
+            <div class="bg-white p-6 rounded-lg shadow">
+                <h3 class="text-lg font-semibold mb-2">Low Accuracy Parsers</h3>
+                <p class="text-3xl font-bold text-{{ 'red' if low_accuracy else 'green' }}-600">{{ low_accuracy|length }}</p>
+            </div>
+            <div class="bg-white p-6 rounded-lg shadow">
+                <h3 class="text-lg font-semibold mb-2">Last Report</h3>
+                <p class="text-gray-600">{{ latest_report.report_date.strftime('%Y-%m-%d %H:%M') if latest_report else 'No reports yet' }}</p>
+            </div>
+        </div>
+
+        <!-- Parser Table -->
+        <div class="bg-white rounded-lg shadow overflow-hidden mb-8">
+            <table class="min-w-full">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Parser Name</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Recipes</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Run Recipes</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Accuracy Score</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Errors</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Parse Time</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Version</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Run</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    {% for parser in parsers %}
+                    <tr>
+                        <td class="px-6 py-4 whitespace-nowrap">{{ parser.name }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">{{ parser.total_recipes }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">{{ parser.last_run_recipes }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="text-{{ 'green' if parser.accuracy_score >= 90 else 'red' }}-600">
+                                {{ "%.2f"|format(parser.accuracy_score) }}%
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
+                                {{ 'bg-green-100 text-green-800' if parser.accuracy_score >= 90 else 
+                                'bg-yellow-100 text-yellow-800' if parser.accuracy_score >= 80 else 
+                                'bg-red-100 text-red-800' }}">
+                                {{ 'Good' if parser.accuracy_score >= 90 else 
+                                'Warning' if parser.accuracy_score >= 80 else 
+                                'Critical' }}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <button onclick="showErrors({{ parser.id }})" 
+                                    class="text-blue-600 hover:text-blue-900">
+                                {{ parser.error_count }} errors
+                            </button>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">{{ "%.2f"|format(parser.avg_parse_time) }}s</td>
+                        <td class="px-6 py-4 whitespace-nowrap">{{ parser.version }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">{{ parser.last_run.strftime('%Y-%m-%d %H:%M') if parser.last_run else 'Never' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Error Modal -->
+        <div id="errorModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full">
+            <div class="relative top-20 mx-auto p-5 border w-3/4 shadow-lg rounded-md bg-white">
+                <div class="mt-3">
+                    <h3 class="text-lg font-medium leading-6 text-gray-900 mb-4">Parser Errors</h3>
+                    <div id="errorContent" class="overflow-y-auto max-h-96"></div>
+                </div>
+                <div class="mt-4">
+                    <button onclick="closeErrorModal()" class="bg-blue-500 text-white px-4 py-2 rounded">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function showErrors(parserId) {
+            const response = await fetch(`/parser/${parserId}/errors`);
+            const data = await response.json();
+            
+            const content = data.errors.map(error => `
+                <div class="mb-4 p-4 bg-gray-50 rounded">
+                    <p class="text-red-600">${error.message}</p>
+                    <p class="text-sm text-gray-500">URL: ${error.url}</p>
+                    <p class="text-sm text-gray-500">Time: ${new Date(error.timestamp).toLocaleString()}</p>
+                </div>
+            `).join('');
+            
+            document.getElementById('errorContent').innerHTML = content;
+            document.getElementById('errorModal').classList.remove('hidden');
+        }
+
+        function closeErrorModal() {
+            document.getElementById('errorModal').classList.add('hidden');
+        }
+    </script>
+</body>
+</html> 

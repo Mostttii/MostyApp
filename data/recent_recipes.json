@@ -1,0 +1,27 @@
+[
+    {
+        "url": "https://www.allrecipes.com/recipe/269524/instant-pot-ground-beef-and-pasta/",
+        "title": "Instant Pot® Ground Beef and Pasta",
+        "ingredients": [
+            {"amount": 1, "unit": "pound", "name": "ground beef"},
+            {"amount": 1, "unit": "", "name": "onion, chopped"},
+            {"amount": 2, "unit": "cloves", "name": "garlic, minced"},
+            {"amount": 24, "unit": "ounces", "name": "pasta sauce"},
+            {"amount": 16, "unit": "ounces", "name": "rotini pasta"},
+            {"amount": 3, "unit": "cups", "name": "water"}
+        ],
+        "dateAdded": "2024-03-10T00:00:00Z"
+    },
+    {
+        "url": "https://www.allrecipes.com/recipe/263929/corned-beef-kimchi-fried-rice/",
+        "title": "Corned Beef Kimchi Fried Rice",
+        "ingredients": [
+            {"amount": 2, "unit": "tablespoons", "name": "vegetable oil"},
+            {"amount": 2, "unit": "cups", "name": "day-old cooked white rice"},
+            {"amount": 1, "unit": "cup", "name": "kimchi, roughly chopped"},
+            {"amount": 12, "unit": "ounces", "name": "corned beef, diced"},
+            {"amount": 2, "unit": "", "name": "green onions, thinly sliced"}
+        ],
+        "dateAdded": "2024-03-10T00:00:00Z"
+    }
+] 

@@ -1,4 +1,4 @@
-import { SymbolView, SymbolViewProps, SymbolWeight } from 'expo-symbols';
+import { FontAwesome } from '@expo/vector-icons';
 import { StyleProp, ViewStyle } from 'react-native';
 
 export function IconSymbol({
@@ -6,27 +6,18 @@ export function IconSymbol({
   size = 24,
   color,
   style,
-  weight = 'regular',
 }: {
-  name: SymbolViewProps['name'];
+  name: string;
   size?: number;
   color: string;
   style?: StyleProp<ViewStyle>;
-  weight?: SymbolWeight;
 }) {
   return (
-    <SymbolView
-      weight={weight}
-      tintColor={color}
-      resizeMode="scaleAspectFit"
-      name={name}
-      style={[
-        {
-          width: size,
-          height: size,
-        },
-        style,
-      ]}
+    <FontAwesome
+      name={name as any}
+      size={size}
+      color={color}
+      style={style}
     />
   );
 }

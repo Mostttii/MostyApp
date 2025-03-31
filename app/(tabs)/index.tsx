@@ -1,74 +1,191 @@
-import { Image, StyleSheet, Platform } from 'react-native';
-
-import { HelloWave } from '@/components/HelloWave';
-import ParallaxScrollView from '@/components/ParallaxScrollView';
-import { ThemedText } from '@/components/ThemedText';
-import { ThemedView } from '@/components/ThemedView';
+import React, { useState, useEffect } from 'react';
+import { ScrollView, StyleSheet, View } from 'react-native';
+import { useAuth } from '../../hooks/useAuth';
+import { Header } from '../../components/home/Header';
+import { NewUserOnboarding } from '../../components/home/NewUserOnboarding';
+import { ContentFeed } from '../../components/home/ContentFeed';
+import { CreatorSpotlights } from '../../components/home/CreatorSpotlights';
+import { FAB } from 'react-native-paper';
+import { useRouter } from 'expo-router';
+import { Theme } from '../../constants/Theme';
+import { HomeHeader } from '../../components/home/HomeHeader';
+import { WelcomeBanner } from '../../components/home/WelcomeBanner';
+import { CategoryFilters } from '../../components/home/CategoryFilters';
+import { RecipeCard } from '../../components/home/RecipeCard';
+import { CreatorSpotlight } from '../../components/home/CreatorSpotlight';
+import { Text } from '../../components/ui/Text';
+import { Pressable } from 'react-native';
+import { useTheme } from '../../context/ThemeContext';
+import { ContentItem } from '../../services/ContentService';
+import { useCreatorSpotlights } from '../../hooks/useCreatorSpotlights';
+import { ActivityIndicator } from 'react-native';
+import { collection, query, orderBy, limit, getDocs, where } from 'firebase/firestore';
+import { db } from '../../config/firebase';
 
 export default function HomeScreen() {
+  const router = useRouter();
+  const theme = useTheme();
+  const [showWelcome, setShowWelcome] = useState(true);
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [latestContent, setLatestContent] = useState<ContentItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const { featuredCreators, loading: creatorsLoading } = useCreatorSpotlights();
+
+  useEffect(() => {
+    loadLatestContent();
+  }, [selectedCategory]);
+
+  const loadLatestContent = async () => {
+    try {
+      setIsLoading(true);
+      const contentRef = collection(db, 'content');
+      
+      // Create query based on selected category
+      const baseQuery = selectedCategory === 'all'
+        ? query(
+            contentRef,
+            orderBy('publishedAt', 'desc'),
+            limit(20)
+          )
+        : query(
+            contentRef,
+            where('metadata.cuisineType', '==', selectedCategory.toLowerCase()),
+            orderBy('publishedAt', 'desc'),
+            limit(20)
+          );
+      
+      const snapshot = await getDocs(baseQuery);
+      const items = snapshot.docs.map(doc => ({
+        ...doc.data(),
+        id: doc.id,
+      })) as ContentItem[];
+
+      setLatestContent(items);
+    } catch (error) {
+      console.error('Error loading content:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleToggleSave = async (recipeId: string) => {
+    // TODO: Implement save functionality
+    console.log('Toggle save:', recipeId);
+  };
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
+    <ScrollView 
+      style={[
+        styles.container,
+        { backgroundColor: theme.colors.background.default }
+      ]}
+    >
+      <HomeHeader />
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.content}
+      >
+        {showWelcome && (
+          <WelcomeBanner
+            onDismiss={() => setShowWelcome(false)}
+          />
+        )}
+        <CategoryFilters
+          selectedCategory={selectedCategory}
+          onSelectCategory={setSelectedCategory}
         />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12'
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-        <ThemedText>
-          Tap the Explore tab to learn more about what's included in this starter app.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          When you're ready, run{' '}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text variant="heading3">Latest Recipes</Text>
+            <Pressable onPress={() => router.push('/(tabs)/my-recipes' as any)}>
+              <Text
+                variant="button"
+                style={{ color: theme.colors.primary.default }}
+              >
+                See All
+              </Text>
+            </Pressable>
+          </View>
+          {isLoading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color={theme.colors.primary.default} />
+            </View>
+          ) : (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.recipesContainer}
+            >
+              {latestContent.map(content => (
+                <RecipeCard
+                  key={content.id}
+                  id={content.id}
+                  title={content.title}
+                  image={{ uri: content.thumbnail }}
+                  creator={{
+                    id: content.creatorId,
+                    name: content.creatorName,
+                    avatar: content.creatorAvatar ? { uri: content.creatorAvatar } : require('../../assets/images/default-avatar.png'),
+                  }}
+                  cookingTime={content.metadata.estimatedTime || 0}
+                  difficulty="medium"
+                  isSaved={false}
+                  onToggleSave={handleToggleSave}
+                />
+              ))}
+            </ScrollView>
+          )}
+        </View>
+        {creatorsLoading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={theme.colors.primary.default} />
+          </View>
+        ) : (
+          <CreatorSpotlight
+            creators={featuredCreators}
+            title="Featured Creators"
+          />
+        )}
+      </ScrollView>
+      
+      <FAB
+        icon="plus"
+        style={styles.fab}
+        onPress={() => router.push('/modal/add-recipe' as any)}
+      />
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
+  container: {
+    flex: 1,
+  },
+  content: {
+    paddingBottom: 80,
+  },
+  section: {
+    marginVertical: 24,
+  },
+  sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    marginBottom: 16,
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+  recipesContainer: {
+    paddingHorizontal: 16,
+    gap: 16,
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
+  fab: {
     position: 'absolute',
+    margin: 16,
+    right: 0,
+    bottom: 0,
   },
-});
+  loadingContainer: {
+    padding: 32,
+    alignItems: 'center',
+  },
+}); 

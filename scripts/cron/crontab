@@ -1,0 +1,5 @@
+# Run recipe parser every Sunday at midnight
+0 0 * * 0 /Users/mostafa.ammar/MostyApp/scripts/cron/parse-recipes.sh
+
+# Generate weekly report every Monday at 9AM
+0 9 * * 1 /Users/mostafa.ammar/MostyApp/scripts/cron/generate-report.sh 
